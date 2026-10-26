@@ -5,6 +5,7 @@ import AddRepoModal from './components/AddRepoModal.jsx';
 import ChangesView from './components/ChangesView.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import FileHistoryView from './components/FileHistoryView.jsx';
+import FileEditorView from './components/FileEditorView.jsx';
 import HistoryView from './components/HistoryView.jsx';
 import RepoRail from './components/RepoRail.jsx';
 import {
@@ -57,6 +58,8 @@ export default function App() {
     commit: null,
     nonce: 0,
   }));
+  const [selectedPath, setSelectedPath] = useState('');
+  const [editorDirty, setEditorDirty] = useState(false);
   const toastTimers = useRef(new Map());
   const activeRepo = useMemo(
     () => repos.find((repo) => repo.id === activeId) || null,
@@ -193,6 +196,8 @@ export default function App() {
     setActiveId(id);
     setTab('changes');
     setFileSeed({ path: '', commit: null, nonce: 0 });
+    setSelectedPath('');
+    setEditorDirty(false);
     api.setActiveRepo(id).catch((error) => {
       notify({
         type: 'error',
@@ -205,16 +210,21 @@ export default function App() {
   }
 
   function changeTab(nextTab) {
-    if (nextTab === 'file' && !fileSeed.path) {
+    if (nextTab === 'editor' && !selectedPath) {
+      setTab('changes');
+      return;
+    }
+    if (nextTab === 'file') {
       let stored = '';
       try {
         stored = localStorage.getItem('gitdeck.lastFileHistoryPath') || '';
       } catch {
         stored = '';
       }
-      if (stored) {
+      const path = selectedPath || fileSeed.path || stored;
+      if (path) {
         setFileSeed((previous) => ({
-          path: stored,
+          path,
           commit: null,
           nonce: previous.nonce + 1,
         }));
@@ -224,8 +234,18 @@ export default function App() {
     setPaletteOpen(false);
   }
 
+  function openFile(path) {
+    if (!path) return;
+    setSelectedPath(path);
+    setEditorDirty(false);
+    setTab('editor');
+    setPaletteOpen(false);
+  }
+
   function openFileHistory(path, commit = null) {
     if (!path) return;
+    setSelectedPath(path);
+    setEditorDirty(false);
     setFileSeed((previous) => ({
       path,
       commit,
@@ -262,6 +282,8 @@ export default function App() {
       if (wasActive) {
         setTab('changes');
         setFileSeed({ path: '', commit: null, nonce: 0 });
+        setSelectedPath('');
+        setEditorDirty(false);
       }
       setRemoveTarget(null);
       await loadRepos({ silent: true });
@@ -285,6 +307,8 @@ export default function App() {
     if (nextId) setActiveId(nextId);
     setTab('changes');
     setFileSeed({ path: '', commit: null, nonce: 0 });
+    setSelectedPath('');
+    setEditorDirty(false);
     setRefreshKey((value) => value + 1);
     setLastSynced(Date.now());
   }
@@ -314,6 +338,9 @@ export default function App() {
         <RepoRail
           repos={repos}
           activeId={activeId}
+          activeRepo={activeRepo}
+          selectedPath={selectedPath}
+          refreshKey={refreshKey}
           loading={loadingRepos}
           onSelect={selectRepo}
           onAdd={() => setAddOpen(true)}
@@ -321,6 +348,8 @@ export default function App() {
           onReveal={revealRepo}
           onRefresh={refreshActive}
           refreshing={refreshing}
+          onOpenFile={openFile}
+          onOpenFileHistory={openFileHistory}
         />
 
         {activeRepo ? (
@@ -340,6 +369,8 @@ export default function App() {
               counts={tabCounts}
               lastSynced={lastSynced}
               repo={activeRepo}
+              filePath={selectedPath}
+              fileDirty={editorDirty}
             />
             <div className="view-root">
               {tab === 'changes' ? (
@@ -368,6 +399,17 @@ export default function App() {
                   repo={activeRepo}
                   seed={fileSeed}
                   refreshKey={refreshKey}
+                  notify={notify}
+                />
+              ) : null}
+              {tab === 'editor' && selectedPath ? (
+                <FileEditorView
+                  key={`editor-${activeRepo.id}-${selectedPath}`}
+                  repo={activeRepo}
+                  path={selectedPath}
+                  onOpenFileHistory={openFileHistory}
+                  onChanged={handleRepoChanged}
+                  onDirtyChange={setEditorDirty}
                   notify={notify}
                 />
               ) : null}

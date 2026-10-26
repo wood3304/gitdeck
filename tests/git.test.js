@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   checkoutBranch,
+  cloneRemoteRepository,
   commitChanges,
   discardPaths,
   getBranches,
@@ -14,10 +16,13 @@ import {
   getFileHistory,
   getLog,
   getRemotes,
+  getRepoTree,
   getStatus,
   parseStatusOutput,
   pushCurrentBranch,
+  readWorkingFile,
   runGit,
+  saveWorkingFile,
   stagePaths,
   unstagePaths,
 } from '../server/git.js';
@@ -62,6 +67,8 @@ test('git backend covers status, diff, stage, commit, history and branches', asy
 
   await fs.writeFile(path.join(repo, 'src.js'), 'export const answer = 41;\n');
   await fs.writeFile(path.join(repo, 'notes.md'), 'first line\n');
+  await fs.mkdir(path.join(repo, 'src', 'lib'), { recursive: true });
+  await fs.writeFile(path.join(repo, 'src', 'lib', 'util.js'), 'export const id = (value) => value;\n');
   await runGit(repo, ['add', '-A']);
   await runGit(repo, ['commit', '-m', 'chore: initial scaffold']);
 
@@ -121,6 +128,32 @@ test('git backend covers status, diff, stage, commit, history and branches', asy
   assert.match(snapshot.content, /answer = 42/);
   assert.equal(snapshot.binary, false);
 
+  const tree = await getRepoTree(repo);
+  assert.ok(tree.files.includes('src.js'));
+  assert.ok(tree.files.includes('src/lib/util.js'));
+  const srcDir = tree.tree.find((node) => node.name === 'src');
+  assert.equal(srcDir.type, 'dir');
+  assert.ok(srcDir.children.some((node) => node.name === 'lib'));
+
+  const working = await readWorkingFile(repo, { path: 'notes.md' });
+  assert.equal(working.content, 'first line\n');
+  assert.equal(working.editable, true);
+  assert.equal(working.eol, '\n');
+  const saved = await saveWorkingFile(repo, {
+    path: 'notes.md',
+    content: 'first line\nedited line\n',
+    eol: working.eol,
+    baseMtimeMs: working.mtimeMs,
+  });
+  assert.equal(saved.content, 'first line\nedited line\n');
+  const restoredWorking = await saveWorkingFile(repo, {
+    path: 'notes.md',
+    content: 'first line\n',
+    eol: saved.eol,
+    baseMtimeMs: saved.mtimeMs,
+  });
+  assert.equal(restoredWorking.content, 'first line\n');
+
   const branches = await getBranches(repo);
   assert.equal(branches.local[0].current, true);
 
@@ -171,4 +204,47 @@ test('git backend publishes a branch and pushes later commits', async (t) => {
   assert.equal(secondPush.setUpstream, false);
   assert.equal(secondPush.summary.ahead, 0);
   assert.match(await runGit(remote, ['log', 'main', '--oneline']), /second pushed commit/);
+});
+
+test('git backend clones a remote repository into a chosen folder', async (t) => {
+  const source = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-clone-source-'));
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-clone-parent-'));
+  t.after(async () => {
+    await fs.rm(source, { recursive: true, force: true });
+    await fs.rm(parent, { recursive: true, force: true });
+  });
+
+  await runGit(source, ['init', '-b', 'main']);
+  await runGit(source, ['config', 'user.name', 'GitDeck Test']);
+  await runGit(source, ['config', 'user.email', 'gitdeck@example.com']);
+  await fs.writeFile(path.join(source, 'README.md'), '# Clone fixture\n');
+  await fs.mkdir(path.join(source, 'src'), { recursive: true });
+  await fs.writeFile(path.join(source, 'src', 'index.js'), 'export const clone = true;\n');
+  await runGit(source, ['add', '-A']);
+  await runGit(source, ['commit', '-m', 'chore: clone fixture']);
+
+  const result = await cloneRemoteRepository({
+    url: pathToFileURL(source).href,
+    parent,
+    name: 'cloned-project',
+  });
+  assert.equal(result.name, 'cloned-project');
+  assert.equal(result.path, path.join(parent, 'cloned-project'));
+  const status = await getStatus(result.path);
+  assert.equal(status.counts.total, 0);
+  assert.equal(status.branchName, 'main');
+  const remotes = await getRemotes(result.path);
+  assert.equal(remotes[0].name, 'origin');
+  const tree = await getRepoTree(result.path);
+  assert.ok(tree.files.includes('src/index.js'));
+
+  await assert.rejects(
+    () =>
+      cloneRemoteRepository({
+        url: pathToFileURL(source).href,
+        parent,
+        name: 'cloned-project',
+      }),
+    (error) => error.code === 'destination_exists',
+  );
 });

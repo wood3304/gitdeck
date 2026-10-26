@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ChevronRight,
+  CloudDownload,
   FileText,
   Folder,
   FolderGit2,
@@ -11,6 +12,7 @@ import {
   HardDrive,
   Home,
   Laptop,
+  Link2,
   Monitor,
   Plus,
 } from 'lucide-react';
@@ -27,6 +29,22 @@ function rootIcon(label) {
   return FolderOpen;
 }
 
+function deriveCloneName(url) {
+  const value = String(url || '')
+    .trim()
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '');
+  if (!value) return '';
+  const withoutGit = value.endsWith('.git') ? value.slice(0, -4) : value;
+  const parts = withoutGit.split(/[/:]/).filter(Boolean);
+  return parts[parts.length - 1] || '';
+}
+
+function cloneTarget(parent, name) {
+  if (!parent) return '—';
+  return `${parent.replace(/[\\/]+$/, '')}/${name || 'repository'}`;
+}
+
 export default function AddRepoModal({ open, onClose, onAdded, notify }) {
   const [data, setData] = useState(null);
   const [pathInput, setPathInput] = useState('');
@@ -34,6 +52,11 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
   const [recent, setRecent] = useState([]);
+  const [mode, setMode] = useState('local');
+  const [cloneUrl, setCloneUrl] = useState('');
+  const [cloneName, setCloneName] = useState('');
+  const [cloneNameTouched, setCloneNameTouched] = useState(false);
+  const [cloning, setCloning] = useState(false);
 
   const initialPath = useMemo(() => {
     try {
@@ -79,7 +102,7 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
   }, [open, initialPath]);
 
   async function navigate(target) {
-    if (!target) return;
+    if (!target || cloning) return;
     setLoading(true);
     setError('');
     try {
@@ -114,8 +137,61 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
     }
   }
 
+  function closeModal() {
+    if (!cloning) onClose?.();
+  }
+
+  function switchMode(nextMode) {
+    if (cloning) return;
+    setMode(nextMode);
+    setError('');
+  }
+
+  function handleCloneUrl(value) {
+    setCloneUrl(value);
+    if (!cloneNameTouched) setCloneName(deriveCloneName(value));
+  }
+
+  async function cloneRepository() {
+    if (cloning || adding) return;
+    if (!cloneUrl.trim()) {
+      setError('请输入远程仓库地址');
+      return;
+    }
+    if (!data?.current) {
+      setError('请选择克隆到的目标文件夹');
+      return;
+    }
+    setCloning(true);
+    setError('');
+    try {
+      const result = await api.cloneRepo({
+        url: cloneUrl.trim(),
+        parent: data.current,
+        name: cloneName.trim(),
+      });
+      rememberPath(result.repo?.path || data.current);
+      try {
+        localStorage.setItem('gitdeck.lastBrowsePath', result.repo?.path || data.current);
+      } catch {
+        // Ignore storage restrictions.
+      }
+      notify?.({
+        type: result.duplicate ? 'info' : 'success',
+        title: result.duplicate ? '代码库已在工作台中' : '远程代码库已克隆',
+        message: result.repo?.name || cloneName || cloneUrl,
+      });
+      onAdded?.(result);
+      onClose?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCloning(false);
+    }
+  }
+
   async function addFolder(target) {
-    if (!target || adding) return;
+    if (!target || adding || cloning) return;
     setAdding(true);
     setError('');
     try {
@@ -154,23 +230,88 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={closeModal}
       className="add-repo-card"
-      ariaLabel="打开本地代码库"
+      ariaLabel={mode === 'clone' ? '克隆远程代码库' : '打开本地代码库'}
     >
       <ModalHeader
-        eyebrow="OPEN REPOSITORY"
-        title="打开本地代码库"
-        description="选择一个包含 .git 的文件夹，或直接输入仓库路径。"
-        onClose={onClose}
-        icon={<FolderGit2 size={19} />}
+        eyebrow={mode === 'clone' ? 'CLONE REPOSITORY' : 'OPEN REPOSITORY'}
+        title={mode === 'clone' ? '克隆远程代码库' : '打开本地代码库'}
+        description={
+          mode === 'clone'
+            ? '输入 HTTPS 或 SSH 地址，选择目标文件夹，GitDeck 会完整克隆后加入工作台。'
+            : '选择一个包含 .git 的文件夹，或直接输入仓库路径。'
+        }
+        onClose={closeModal}
+        icon={mode === 'clone' ? <CloudDownload size={19} /> : <FolderGit2 size={19} />}
       />
+
+      <div className="repo-source-tabs" role="tablist" aria-label="添加方式">
+        <button
+          className={cn('repo-source-tab', mode === 'local' && 'is-active')}
+          onClick={() => switchMode('local')}
+          disabled={cloning}
+        >
+          <FolderGit2 size={14} />
+          本地仓库
+        </button>
+        <button
+          className={cn('repo-source-tab', mode === 'clone' && 'is-active')}
+          onClick={() => switchMode('clone')}
+          disabled={cloning}
+        >
+          <CloudDownload size={14} />
+          远程克隆
+        </button>
+      </div>
+
+      {mode === 'clone' ? (
+        <div className="clone-form">
+          <label className="clone-field clone-url-field">
+            <span>远程地址</span>
+            <div className="clone-input-wrap">
+              <Link2 size={14} />
+              <input
+                value={cloneUrl}
+                onChange={(event) => handleCloneUrl(event.target.value)}
+                placeholder="https://github.com/user/repo.git 或 git@github.com:user/repo.git"
+                spellCheck={false}
+                autoComplete="off"
+                disabled={cloning}
+                aria-label="远程仓库地址"
+              />
+            </div>
+          </label>
+          <div className="clone-form-row">
+            <label className="clone-field clone-name-field">
+              <span>目录名</span>
+              <input
+                value={cloneName}
+                onChange={(event) => {
+                  setCloneName(event.target.value);
+                  setCloneNameTouched(true);
+                }}
+                placeholder="repository"
+                spellCheck={false}
+                disabled={cloning}
+                aria-label="克隆目录名"
+              />
+            </label>
+            <div className="clone-target-preview">
+              <span>克隆到</span>
+              <code title={cloneTarget(data?.current, cloneName)}>
+                {cloneTarget(data?.current, cloneName)}
+              </code>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="repo-pathbar">
         <button
           className="icon-button path-back"
           onClick={() => navigate(data?.parent)}
-          disabled={!data?.parent || loading}
+          disabled={!data?.parent || loading || cloning}
           title="上一级"
           aria-label="上一级"
         >
@@ -181,24 +322,44 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
           <input
             value={pathInput}
             onChange={(event) => setPathInput(event.target.value)}
-            placeholder="输入本地路径，例如 D:\code\my-project"
+            placeholder={
+              mode === 'clone'
+                ? '选择克隆到的目标文件夹，例如 D:\\code'
+                : '输入本地路径，例如 D:\\code\\my-project'
+            }
             spellCheck={false}
-            aria-label="代码库路径"
+            aria-label={mode === 'clone' ? '克隆目标文件夹' : '代码库路径'}
+            disabled={cloning}
           />
         </form>
-        <button className="button ghost small path-go" onClick={handleGo} disabled={loading}>
+        <button
+          className="button ghost small path-go"
+          onClick={handleGo}
+          disabled={loading || cloning}
+        >
           {loading ? <Spinner size={14} /> : <ArrowRight size={14} />}
           前往
         </button>
-        <button
-          className="button primary small path-add"
-          onClick={() => addFolder(data?.current)}
-          disabled={adding || loading || !data?.current}
-        >
-          {adding ? <Spinner size={14} /> : <Plus size={14} />}
-          添加此文件夹
-        </button>
+        {mode === 'local' ? (
+          <button
+            className="button primary small path-add"
+            onClick={() => addFolder(data?.current)}
+            disabled={adding || loading || !data?.current}
+          >
+            {adding ? <Spinner size={14} /> : <Plus size={14} />}
+            添加此文件夹
+          </button>
+        ) : null}
       </div>
+
+      {cloning ? (
+        <div className="clone-progress">
+          <Spinner size={15} />
+          <span>
+            正在克隆 <code>{cloneUrl}</code>，仓库较大时可能需要几分钟，请保持窗口打开。
+          </span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="add-repo-error">
@@ -248,7 +409,11 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
 
           <div className="side-note">
             <Laptop size={14} />
-            <p>GitDeck 只读取本地 Git 数据，不会上传任何文件。</p>
+            <p>
+              {mode === 'clone'
+                ? '克隆使用系统 Git 凭据；私有仓库请先在终端完成登录。'
+                : 'GitDeck 只读取本地 Git 数据，不会上传任何文件。'}
+            </p>
           </div>
         </aside>
 
@@ -264,7 +429,9 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
                 </span>
               ) : null}
             </div>
-            <span className="dir-count">{entries.length} 个文件夹</span>
+            <span className="dir-count">
+              {mode === 'clone' ? '选择克隆目标' : `${entries.length} 个文件夹`}
+            </span>
           </div>
 
           <div className="dir-list">
@@ -286,7 +453,11 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
               entries.map((entry) => (
                 <div
                   key={entry.path}
-                  className={cn('dir-row', entry.isRepo && 'is-repo')}
+                  className={cn(
+                    'dir-row',
+                    entry.isRepo && 'is-repo',
+                    cloning && 'is-disabled',
+                  )}
                   onClick={() => navigate(entry.path)}
                   role="button"
                   tabIndex={0}
@@ -299,7 +470,7 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
                   </span>
                   <span className="dir-name">{entry.name}</span>
                   {entry.isRepo ? <span className="dir-git-tag">GIT</span> : null}
-                  {entry.isRepo ? (
+                  {entry.isRepo && mode === 'local' ? (
                     <button
                       className="dir-add-inline"
                       onClick={(event) => {
@@ -321,20 +492,33 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
       <footer className="add-repo-footer">
         <span className="footer-shortcut">
           <span className="footer-dot" />
-          支持嵌套仓库、工作树与子模块
+          {mode === 'clone'
+            ? `将完整克隆到 ${cloneTarget(data?.current, cloneName)}`
+            : '支持嵌套仓库、工作树与子模块'}
         </span>
         <div className="modal-actions inline">
-          <button className="button ghost small" onClick={onClose}>
+          <button className="button ghost small" onClick={closeModal} disabled={cloning}>
             取消
           </button>
-          <button
-            className="button primary small"
-            onClick={() => addFolder(data?.current)}
-            disabled={adding || loading || !data?.current}
-          >
-            {adding ? <Spinner size={14} /> : <FolderGit2 size={14} />}
-            打开此文件夹
-          </button>
+          {mode === 'clone' ? (
+            <button
+              className="button primary small"
+              onClick={cloneRepository}
+              disabled={cloning || !cloneUrl.trim() || !data?.current}
+            >
+              {cloning ? <Spinner size={14} /> : <CloudDownload size={14} />}
+              克隆并添加
+            </button>
+          ) : (
+            <button
+              className="button primary small"
+              onClick={() => addFolder(data?.current)}
+              disabled={adding || loading || !data?.current}
+            >
+              {adding ? <Spinner size={14} /> : <FolderGit2 size={14} />}
+              打开此文件夹
+            </button>
+          )}
         </div>
       </footer>
     </Modal>

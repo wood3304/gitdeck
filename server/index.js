@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   checkoutBranch,
+  cloneRemoteRepository,
   commitChanges,
   discardPaths,
   fetchRemotes,
@@ -15,11 +16,14 @@ import {
   getGitVersion,
   getLog,
   getRepoSummary,
+  getRepoTree,
   getStatus,
   listRepoFiles,
   pushCurrentBranch,
+  readWorkingFile,
   resolveRepo,
   revealPath,
+  saveWorkingFile,
   stagePaths,
   unstagePaths,
 } from './git.js';
@@ -88,7 +92,7 @@ export async function createApp() {
   await store.ensureLoaded();
 
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '4mb' }));
   app.use((request, response, next) => {
     if (request.path.startsWith('/api')) response.set('Cache-Control', 'no-store');
     next();
@@ -106,7 +110,7 @@ export async function createApp() {
       response.json({
         ok: true,
         name: 'GitDeck',
-        version: '1.1.0',
+        version: '1.2.0',
         gitVersion: await getGitVersion(),
         node: process.version,
         platform: process.platform,
@@ -160,6 +164,43 @@ export async function createApp() {
     asyncRoute(async (request, response) => {
       const result = await store.remove(request.params.id);
       response.json({ ok: true, removed: result.removed, activeRepoId: result.activeRepoId });
+    }),
+  );
+
+  app.post(
+    '/api/repos/clone',
+    asyncRoute(async (request, response) => {
+      const url = String(request.body?.url || '').trim();
+      const parent = String(request.body?.parent || '').trim();
+      const name = String(request.body?.name || '').trim();
+      if (!url) throw new AppError('请输入远程仓库地址', { status: 400 });
+      if (!parent) throw new AppError('请选择目标文件夹', { status: 400 });
+      const clone = await cloneRemoteRepository({ url, parent, name });
+      let result;
+      try {
+        result = await store.add(clone.path);
+      } catch (error) {
+        if (error.code === 'repo_exists' && error.repo) {
+          await store.setActive(error.repo.id);
+          const summary = await getRepoSummary(error.repo.path).catch(() => null);
+          response.status(200).json({
+            duplicate: true,
+            repo: { ...error.repo, ...(summary || {}) },
+            activeRepoId: error.repo.id,
+            clone,
+          });
+          return;
+        }
+        throw error;
+      }
+      const summary = await getRepoSummary(result.repo.path);
+      await store.setActive(result.repo.id);
+      response.status(201).json({
+        duplicate: false,
+        repo: { ...result.repo, ...summary },
+        activeRepoId: result.repo.id,
+        clone,
+      });
     }),
   );
 
@@ -272,6 +313,39 @@ export async function createApp() {
           rev: request.query.rev ? String(request.query.rev) : 'WORKTREE',
         }),
       );
+    }),
+  );
+
+  app.get(
+    '/api/repos/:id/tree',
+    asyncRoute(async (request, response) => {
+      const repo = await repoFromRequest(request);
+      response.json(await getRepoTree(repo.path));
+    }),
+  );
+
+  app.get(
+    '/api/repos/:id/working-file',
+    asyncRoute(async (request, response) => {
+      const repo = await repoFromRequest(request);
+      if (!request.query.path) throw new AppError('缺少文件路径', { status: 400 });
+      response.json(await readWorkingFile(repo.path, { path: String(request.query.path) }));
+    }),
+  );
+
+  app.put(
+    '/api/repos/:id/working-file',
+    asyncRoute(async (request, response) => {
+      const repo = await repoFromRequest(request);
+      const body = request.body || {};
+      if (!body.path) throw new AppError('缺少文件路径', { status: 400 });
+      const file = await saveWorkingFile(repo.path, {
+        path: body.path,
+        content: body.content,
+        eol: body.eol,
+        baseMtimeMs: body.baseMtimeMs,
+      });
+      response.json({ ok: true, file });
     }),
   );
 

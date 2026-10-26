@@ -4,6 +4,25 @@ All notable changes to GitDeck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-10-26
+
+### Added
+
+- Hierarchical file explorer in the repository rail, backed by tracked and untracked (non-ignored) files.
+- File explorer search, directory expansion, top-level auto-expansion and inline “file history” actions.
+- Read/write file view with line numbers, line-ending preservation, `Ctrl/Cmd+S`, dirty state, revert and draft recovery.
+- Selected-file integration with file history and the main tab bar.
+- Remote repository import via `git clone`, with a URL field, destination browser, editable folder name and progress state.
+- Clone API (`POST /api/repos/clone`), tree API (`GET /api/repos/:id/tree`) and working-file read/write APIs.
+- Backend tests for tree building, file read/write and local remote clone.
+
+### Changed
+
+- Repository rail now combines the multi-repository list with a file tree for the active repository.
+- Added path traversal, `.git` metadata and symlink-escape protections to the file editor.
+- Increased JSON body limit to support editing files up to 2 MB.
+- Documentation and screenshots updated for file browsing, editing and remote cloning.
+
 ## [1.1.0] — 2026-10-26
 
 ### Added
@@ -40,5 +59,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Demo repository generator for local exploration.
 - Backend integration tests and a GitHub Actions CI workflow.
 
+[1.2.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.2.0
 [1.1.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.1.0
 [1.0.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.0.0

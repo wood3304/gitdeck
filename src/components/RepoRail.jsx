@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDay, relativeTime, repoAccent, useOutsideClick } from '../utils.js';
 import { SearchInput, Spinner } from './common.jsx';
+import FileExplorer from './FileExplorer.jsx';
 
 function RepoMenu({ repo, onClose, onReveal, onRemove }) {
   const menuRef = useRef(null);
@@ -151,6 +152,9 @@ function RepoCard({
 export default function RepoRail({
   repos,
   activeId,
+  activeRepo,
+  selectedPath,
+  refreshKey,
   loading,
   onSelect,
   onAdd,
@@ -158,6 +162,8 @@ export default function RepoRail({
   onReveal,
   onRefresh,
   refreshing,
+  onOpenFile,
+  onOpenFileHistory,
 }) {
   const [filter, setFilter] = useState('');
   const [menuOpen, setMenuOpen] = useState(null);
@@ -260,6 +266,21 @@ export default function RepoRail({
           </div>
         ) : null}
       </div>
+
+      {activeRepo ? (
+        <FileExplorer
+          repo={activeRepo}
+          selectedPath={selectedPath}
+          refreshKey={refreshKey}
+          onOpenFile={onOpenFile}
+          onOpenFileHistory={onOpenFileHistory}
+        />
+      ) : (
+        <div className="file-explorer-placeholder">
+          <FolderGit2 size={18} />
+          <span>选择一个代码库查看文件目录</span>
+        </div>
+      )}
 
       <div className="rail-foot">
         <button className="add-repo-button" onClick={onAdd}>

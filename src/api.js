@@ -61,9 +61,17 @@ export const api = {
 
   listRepos: () => request('/repos'),
   addRepo: (path) => request('/repos', { method: 'POST', body: { path } }),
+  cloneRepo: (body) => request('/repos/clone', { method: 'POST', body }),
   removeRepo: (id) => request(`/repos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   setActiveRepo: (id) => request('/repos/active', { method: 'POST', body: { id } }),
   repoSummary: (id) => request(`${repoBase(id)}/summary`),
+
+  status: (id, signal) => request(`${repoBase(id)}/status`, { signal }),
+  tree: (id, signal) => request(`${repoBase(id)}/tree`, { signal }),
+  readWorkingFile: (id, path, signal) =>
+    request(`${repoBase(id)}/working-file${buildQuery({ path })}`, { signal }),
+  saveWorkingFile: (id, body) =>
+    request(`${repoBase(id)}/working-file`, { method: 'PUT', body }),
 
   status: (id, signal) => request(`${repoBase(id)}/status`, { signal }),
   log: (id, params, signal) => request(`${repoBase(id)}/log${buildQuery(params)}`, { signal }),

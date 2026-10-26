@@ -1687,6 +1687,317 @@ export async function getFileContent(repoPath, options = {}) {
   };
 }
 
+const MAX_EDITABLE_FILE = 2 * 1024 * 1024;
+
+function assertNotGitMetadata(relPath) {
+  if (relPath.split('/').some((segment) => segment.toLowerCase() === '.git')) {
+    throw new AppError('不能读取或修改 .git 内部文件', {
+      status: 400,
+      code: 'protected_path',
+    });
+  }
+}
+
+async function assertRealPathInside(repoPath, absolutePath) {
+  const [rootReal, fileReal] = await Promise.all([
+    fs.realpath(repoPath),
+    fs.realpath(absolutePath),
+  ]);
+  const relative = path.relative(rootReal, fileReal);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new AppError('文件路径越过了代码库边界', {
+      status: 400,
+      code: 'invalid_path',
+    });
+  }
+}
+
+async function readFilePrefix(absolutePath, size) {
+  if (size <= MAX_EDITABLE_FILE) {
+    return fs.readFile(absolutePath);
+  }
+  const handle = await fs.open(absolutePath, 'r');
+  try {
+    const buffer = Buffer.alloc(MAX_EDITABLE_FILE);
+    const { bytesRead } = await handle.read(buffer, 0, MAX_EDITABLE_FILE, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+export async function getRepoTree(repoPath, options = {}) {
+  await assertRepoPath(repoPath);
+  const limit = clamp(options.limit ?? 10000, 100, 50000);
+  const raw = await runGit(
+    repoPath,
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    { timeout: 30000, maxBuffer: 32 * 1024 * 1024 },
+  );
+  const allPaths = [...new Set(raw.split('\0').filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'en'),
+  );
+  const paths = allPaths.slice(0, limit);
+  const root = { type: 'dir', name: '', path: '', children: [] };
+  const directories = new Map([['', root]]);
+  const files = [];
+
+  for (const filePath of paths) {
+    const parts = filePath.split('/');
+    let parentPath = '';
+    let parent = root;
+    for (let index = 0; index < parts.length; index += 1) {
+      const name = parts[index];
+      const isFile = index === parts.length - 1;
+      const nodePath = parentPath ? `${parentPath}/${name}` : name;
+      if (isFile) {
+        parent.children.push({ type: 'file', name, path: nodePath });
+        files.push(nodePath);
+      } else {
+        let directory = directories.get(nodePath);
+        if (!directory) {
+          directory = { type: 'dir', name, path: nodePath, children: [] };
+          directories.set(nodePath, directory);
+          parent.children.push(directory);
+        }
+        parent = directory;
+        parentPath = nodePath;
+      }
+    }
+  }
+
+  function sortTree(nodes) {
+    nodes.sort((left, right) => {
+      if (left.type !== right.type) return left.type === 'dir' ? -1 : 1;
+      return left.name.localeCompare(right.name, 'en', { sensitivity: 'base' });
+    });
+    for (const node of nodes) {
+      if (node.type === 'dir') sortTree(node.children);
+    }
+  }
+  sortTree(root.children);
+
+  return {
+    tree: root.children,
+    files,
+    count: allPaths.length,
+    shown: paths.length,
+    truncated: allPaths.length > limit,
+    limit,
+  };
+}
+
+export async function readWorkingFile(repoPath, options = {}) {
+  await assertRepoPath(repoPath);
+  const relPath = normalizeRepoRelPath(options.path);
+  assertNotGitMetadata(relPath);
+  const absolute = resolveInside(repoPath, relPath);
+  let stat;
+  try {
+    stat = await fs.stat(absolute);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new AppError('文件不存在或已被删除', { status: 404, code: 'file_not_found' });
+    }
+    throw error;
+  }
+  if (!stat.isFile()) {
+    throw new AppError('目标不是普通文件', { status: 400, code: 'not_a_file' });
+  }
+  await assertRealPathInside(repoPath, absolute);
+  const buffer = await readFilePrefix(absolute, stat.size);
+  const truncated = stat.size > MAX_EDITABLE_FILE;
+  const binary = buffer.includes(0);
+  let content = null;
+  let eol = '\n';
+  if (!binary) {
+    const text = buffer.toString('utf8');
+    const crlfCount = (text.match(/\r\n/g) || []).length;
+    const lfCount = (text.match(/\n/g) || []).length;
+    eol = crlfCount > 0 && crlfCount === lfCount ? '\r\n' : '\n';
+    content = text.replace(/\r\n/g, '\n');
+  }
+  return {
+    path: relPath,
+    name: path.basename(relPath),
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    truncated,
+    binary,
+    editable: !binary && !truncated,
+    content,
+    eol,
+    maxBytes: MAX_EDITABLE_FILE,
+  };
+}
+
+export async function saveWorkingFile(repoPath, options = {}) {
+  await assertRepoPath(repoPath);
+  const relPath = normalizeRepoRelPath(options.path);
+  assertNotGitMetadata(relPath);
+  if (typeof options.content !== 'string') {
+    throw new AppError('文件内容必须是文本', { status: 400, code: 'invalid_content' });
+  }
+  if (options.content.includes('\0')) {
+    throw new AppError('文件内容包含二进制数据', { status: 400, code: 'binary_content' });
+  }
+  if (Buffer.byteLength(options.content, 'utf8') > MAX_EDITABLE_FILE) {
+    throw new AppError('文件超过 2 MB，暂不支持在 GitDeck 中编辑', {
+      status: 400,
+      code: 'file_too_large',
+    });
+  }
+  const absolute = resolveInside(repoPath, relPath);
+  let stat;
+  try {
+    stat = await fs.stat(absolute);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new AppError('文件不存在或已被删除', { status: 404, code: 'file_not_found' });
+    }
+    throw error;
+  }
+  if (!stat.isFile()) {
+    throw new AppError('目标不是普通文件', { status: 400, code: 'not_a_file' });
+  }
+  await assertRealPathInside(repoPath, absolute);
+  const baseMtimeMs = Number(options.baseMtimeMs);
+  if (Number.isFinite(baseMtimeMs) && Math.abs(stat.mtimeMs - baseMtimeMs) > 2) {
+    throw new AppError('文件已在磁盘上发生变化，请重新加载后再保存', {
+      status: 409,
+      code: 'file_changed',
+    });
+  }
+  const eol = options.eol === '\r\n' ? '\r\n' : '\n';
+  const normalized = options.content.replace(/\r\n/g, '\n');
+  const output = eol === '\r\n' ? normalized.replace(/\n/g, '\r\n') : normalized;
+  await fs.writeFile(absolute, output, 'utf8');
+  return readWorkingFile(repoPath, { path: relPath });
+}
+
+function normalizeCloneUrl(raw) {
+  let value = String(raw || '').trim();
+  if (!value) {
+    throw new AppError('请输入远程仓库地址', { status: 400, code: 'missing_url' });
+  }
+  if (value.includes('\0') || /[\r\n]/.test(value)) {
+    throw new AppError('远程仓库地址包含非法字符', { status: 400, code: 'invalid_url' });
+  }
+  const schemeMatch = value.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+  if (schemeMatch) {
+    const scheme = schemeMatch[1].toLowerCase();
+    if (!['https', 'http', 'ssh', 'git', 'file'].includes(scheme)) {
+      throw new AppError('只支持 HTTPS、SSH 或 Git 协议地址', {
+        status: 400,
+        code: 'invalid_url',
+      });
+    }
+    if (scheme === 'https' || scheme === 'http') {
+      let parsed;
+      try {
+        parsed = new URL(value);
+      } catch {
+        throw new AppError('远程仓库地址格式不正确', {
+          status: 400,
+          code: 'invalid_url',
+        });
+      }
+      if (parsed.username || parsed.password) {
+        throw new AppError('请不要在地址中携带账号或 Token，请使用系统 Git 凭据管理器', {
+          status: 400,
+          code: 'credentials_not_allowed',
+        });
+      }
+    }
+  } else if (/^[^\s@]+@[^\s:]+:.+$/.test(value)) {
+    // SCP-style SSH address, e.g. git@github.com:owner/repo.git
+  } else if (/^[^\s/]+\.[^\s/]+\/.+/i.test(value)) {
+    value = `https://${value}`;
+  } else {
+    throw new AppError('无法识别远程仓库地址，请使用完整 HTTPS 或 SSH 地址', {
+      status: 400,
+      code: 'invalid_url',
+    });
+  }
+  return value;
+}
+
+function deriveCloneName(url) {
+  let value = url.replace(/[?#].*$/, '').replace(/\/+$/, '');
+  if (value.endsWith('.git')) value = value.slice(0, -4);
+  const parts = value.split(/[/:]/).filter(Boolean);
+  return parts[parts.length - 1] || 'repository';
+}
+
+function sanitizeCloneName(value) {
+  let name = String(value || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '');
+  if (!name || name === '.' || name === '..') name = 'repository';
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)) name = `_${name}`;
+  return name.slice(0, 80);
+}
+
+export async function cloneRemoteRepository(options = {}) {
+  const url = normalizeCloneUrl(options.url);
+  const parent = stripUserPath(options.parent || process.cwd());
+  let parentStat;
+  try {
+    parentStat = await fs.stat(parent);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new AppError('目标文件夹不存在', { status: 400, code: 'parent_not_found' });
+    }
+    throw error;
+  }
+  if (!parentStat.isDirectory()) {
+    throw new AppError('目标位置不是文件夹', { status: 400, code: 'parent_not_directory' });
+  }
+  const name = sanitizeCloneName(options.name || deriveCloneName(url));
+  const destination = path.join(parent, name);
+  const relative = path.relative(parent, destination);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new AppError('目标目录名不合法', { status: 400, code: 'invalid_name' });
+  }
+  try {
+    await fs.stat(destination);
+    throw new AppError('目标目录已存在，请更换目录名或目标位置', {
+      status: 409,
+      code: 'destination_exists',
+    });
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const result = await runGitRaw(parent, ['clone', '--progress', url, destination], {
+    timeout: 300000,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  const output = redactRemoteUrl(
+    [result.textOut, result.textErr]
+      .filter(Boolean)
+      .join('\n')
+      .trim(),
+  );
+  if (result.code !== 0) {
+    throw new GitError('克隆远程代码库失败', {
+      args: ['clone', url, destination],
+      stderr: output,
+      exitCode: result.code,
+    });
+  }
+  await assertRepoPath(destination);
+  const lines = output.split(/\r?\n/).filter(Boolean);
+  return {
+    path: destination,
+    name,
+    url: redactRemoteUrl(url),
+    output: lines.slice(-12).join('\n'),
+  };
+}
+
 const fileListCache = new Map();
 
 export async function listRepoFiles(repoPath, query = '') {

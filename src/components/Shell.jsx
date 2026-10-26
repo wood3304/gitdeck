@@ -10,6 +10,7 @@ import {
   CloudUpload,
   Copy,
   FileClock,
+  FileCode2,
   FileDiff,
   FolderOpen,
   GitBranch,
@@ -520,25 +521,54 @@ const tabs = [
   { id: 'file', label: '文件历史', icon: FileClock },
 ];
 
-export function TabBar({ activeTab, onChange, counts, lastSynced, repo }) {
+export function TabBar({
+  activeTab,
+  onChange,
+  counts,
+  lastSynced,
+  repo,
+  filePath,
+  fileDirty,
+}) {
   const changeCount = counts?.total || 0;
+  const fileName = filePath ? filePath.split('/').pop() : '';
+  const visibleTabs = filePath
+    ? [
+        ...tabs,
+        {
+          id: 'editor',
+          label: fileName || '文件',
+          icon: FileCode2,
+          title: filePath,
+          file: true,
+        },
+      ]
+    : tabs;
   return (
     <div className="tabbar">
       <div className="tab-list" role="tablist" aria-label="视图">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               role="tab"
               aria-selected={activeTab === tab.id}
-              className={cn('tab-button', activeTab === tab.id && 'is-active')}
+              className={cn(
+                'tab-button',
+                tab.file && 'tab-file',
+                activeTab === tab.id && 'is-active',
+              )}
               onClick={() => onChange(tab.id)}
+              title={tab.title || tab.label}
             >
               <Icon size={14} />
-              <span>{tab.label}</span>
+              <span className="tab-label-text">{tab.label}</span>
               {tab.id === 'changes' && changeCount > 0 ? (
                 <span className="tab-badge">{changeCount}</span>
+              ) : null}
+              {tab.file && fileDirty ? (
+                <span className="tab-dirty-dot" title="有未保存的修改" />
               ) : null}
             </button>
           );
