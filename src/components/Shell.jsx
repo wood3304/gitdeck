@@ -59,7 +59,6 @@ export function TopBar({ activeRepo, theme, onToggleTheme, onOpenPalette, repoCo
         <BrandMark size={28} />
         <div className="brand-copy">
           <strong>GitDeck</strong>
-          <span>LOCAL</span>
         </div>
       </div>
       <div className="topbar-context">
@@ -79,10 +78,6 @@ export function TopBar({ activeRepo, theme, onToggleTheme, onOpenPalette, repoCo
         )}
       </div>
       <div className="topbar-actions">
-        <span className="local-pill" title="所有操作都在本机通过 Git CLI 执行">
-          <ShieldCheck size={12} />
-          Local only
-        </span>
         <button className="command-trigger" onClick={onOpenPalette}>
           <Search size={14} />
           <span>快速查找</span>
@@ -643,7 +638,7 @@ export function Welcome({ onAdd, onOpenPalette, health, loading }) {
       <div className="welcome-inner">
         <div className="welcome-badge">
           <span className="live-dot" />
-          LOCAL-FIRST GIT WORKBENCH
+          MULTI-REPOSITORY GIT WORKBENCH
         </div>
         <h1>
           把每一次提交，
@@ -651,7 +646,7 @@ export function Welcome({ onAdd, onOpenPalette, health, loading }) {
           <span>看得更清楚。</span>
         </h1>
         <p className="welcome-sub">
-          一个专注于阅读与比较的本地 Git 桌面客户端。
+          一个专注于阅读与比较的 Git 工作台。
           <br />
           多仓库切换、提交历史、文件版本与工作区差异，都在同一个界面里。
         </p>
@@ -673,7 +668,7 @@ export function Welcome({ onAdd, onOpenPalette, health, loading }) {
               <GitBranch size={18} />
             </div>
             <strong>多仓库工作台</strong>
-            <p>左侧集中管理多个本地仓库，无需在不同窗口之间来回切换。</p>
+            <p>左侧集中管理多个仓库，无需在不同窗口之间来回切换。</p>
           </div>
           <div className="feature-card">
             <div className="feature-icon green">
@@ -692,8 +687,8 @@ export function Welcome({ onAdd, onOpenPalette, health, loading }) {
         </div>
 
         <div className="welcome-footer-note">
-          <ShieldCheck size={13} />
-          All operations run through your local Git CLI.
+          <GitBranch size={13} />
+          Powered by your Git CLI.
           {health ? <span>Git {health.gitVersion?.replace(/\.windows\.\d+$/i, '')} · {health.platform}</span> : null}
           {loading ? <Spinner size={12} /> : null}
         </div>

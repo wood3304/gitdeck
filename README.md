@@ -1,17 +1,17 @@
 # GitDeck
 
-> **本地优先的多仓库 Git 工作台。**
+> **多仓库 Git 工作台。**
 
 [![CI](https://github.com/wood3304/gitdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/wood3304/gitdeck/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-5b76f7.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933.svg)](https://nodejs.org/)
 [![Git](https://img.shields.io/badge/git-%3E%3D2.30-f05033.svg)](https://git-scm.com/)
 
-GitDeck 是一个运行在本机的 Git 桌面客户端。它不接管你的 Git 工作流，而是通过系统 Git CLI 读取仓库状态，把多仓库、文件树、代码编辑、文件历史、提交记录和代码差异放进同一个界面。
+GitDeck 是一个 Git 桌面客户端。它不接管你的 Git 工作流，而是通过系统 Git CLI 读取仓库状态，把多仓库、文件树、代码编辑、文件历史、提交记录和代码差异放进同一个界面。
 
-所有操作都在本机完成，不依赖云服务，也不会上传代码。
+GitDeck 通过系统 Git CLI 操作仓库；只有你主动执行 fetch、push 或 clone 时才会访问远程。
 
-![GitDeck 本地更改视图](docs/screenshots/changes.png)
+![GitDeck 工作区更改视图](docs/screenshots/changes.png)
 
 ---
 
@@ -410,7 +410,7 @@ Express 5 (仅监听 127.0.0.1)
 - **无数据库**：仓库配置保存在 `.data/state.json`。
 - **无 shell 拼接**：所有 Git 命令通过 `spawn` 调用参数数组，路径使用 `--literal-pathspecs`，避免命令注入和 glob 歧义。
 - **结构化解析**：`git status --porcelain=v2 -z`、`git log` 自定义分隔符、统一 diff 解析器。
-- **本地优先**：服务只绑定 loopback，不发送遥测，不读取远程凭据。
+- **服务边界**：HTTP 服务只绑定 loopback，不发送遥测，不读取远程凭据。
 - **跨平台**：Windows 下通过临时文件捕获 Git stdout/stderr，避免管道与编码问题；同时兼容 macOS / Linux。
 - **无框架负担**：前端只依赖 React、Vite 和 `lucide-react` 图标库；后端只依赖 Express。
 
@@ -603,7 +603,7 @@ git fetch --all
 
 ## 已知限制与路线图
 
-当前版本聚焦本地 Git 工作流，因此有一些刻意保留的边界：
+当前版本聚焦 Git 工作流，因此有一些刻意保留的边界：
 
 - 没有 `pull`、强制推送、标签推送、远程管理界面；
 - 没有按 hunk 暂存、rebase/cherry-pick/revert、stash；
@@ -611,7 +611,7 @@ git fetch --all
 - 文件编辑是轻量文本编辑器：没有语法高亮、新建/重命名/删除文件，文件上限 2 MB；
 - 克隆没有进度条、取消、浅克隆或稀疏检出；
 - 没有 Git LFS 专用支持；
-- 没有桌面安装包（当前通过本地 Web 服务运行）。
+- 没有桌面安装包（当前通过 Web 服务运行）。
 
 后续可以考虑：
 

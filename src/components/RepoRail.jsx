@@ -293,10 +293,6 @@ export default function RepoRail({
           </span>
           <Plus size={14} />
         </button>
-        <div className="rail-privacy">
-          <span className="privacy-dot" />
-          本地优先 · 代码不离开这台设备
-        </div>
         <div className="rail-day">{formatDay(new Date())}</div>
       </div>
     </aside>

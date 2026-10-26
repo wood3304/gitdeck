@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "GitDeck — a local-first, multi-repository Git workbench",
+  "description": "GitDeck — a multi-repository Git workbench",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wood3304/gitdeck.git"

@@ -1,5 +1,5 @@
 /* =========================================================
-   GitDeck — local-first git workbench
+   GitDeck — multi-repository git workbench
    Design tokens
    ========================================================= */
 :root {
@@ -366,17 +366,6 @@ pre {
   letter-spacing: -0.015em;
 }
 
-.brand-copy span {
-  font-size: 7.5px;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-line);
-  border-radius: 4px;
-  padding: 2px 4px;
-}
-
 .topbar-context {
   min-width: 0;
   padding: 0 20px;
@@ -435,24 +424,6 @@ pre {
   align-items: center;
   gap: 8px;
   padding-right: 14px;
-}
-
-.local-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 4px 7px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--input-bg);
-}
-
-.local-pill svg {
-  color: var(--green);
 }
 
 .command-trigger {
@@ -1273,24 +1244,6 @@ pre {
   margin-top: 1px;
   color: var(--muted-2);
   font-size: 9px;
-}
-
-.rail-privacy {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 9px;
-  padding: 0 2px;
-  color: var(--muted-2);
-  font-size: 8.4px;
-}
-
-.privacy-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 7px rgba(67, 217, 163, 0.4);
 }
 
 .rail-day {
@@ -6566,10 +6519,6 @@ pre {
 @media (max-width: 1160px) {
   .repo-path {
     max-width: 300px;
-  }
-
-  .local-pill {
-    display: none;
   }
 
   .push-button {

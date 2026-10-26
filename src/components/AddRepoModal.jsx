@@ -412,7 +412,7 @@ export default function AddRepoModal({ open, onClose, onAdded, notify }) {
             <p>
               {mode === 'clone'
                 ? '克隆使用系统 Git 凭据；私有仓库请先在终端完成登录。'
-                : 'GitDeck 只读取本地 Git 数据，不会上传任何文件。'}
+                : 'GitDeck 通过系统 Git CLI 读取仓库状态。'}
             </p>
           </div>
         </aside>

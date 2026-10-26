@@ -538,7 +538,7 @@ export async function startServer({ port = Number(process.env.PORT) || 4788 } = 
       const actual = server.address();
       const url = `http://127.0.0.1:${actual.port}`;
       console.log('');
-      console.log('  \x1b[38;5;111m◆ GitDeck\x1b[0m  local-first git workbench');
+      console.log('  \x1b[38;5;111m◆ GitDeck\x1b[0m  multi-repository git workbench');
       console.log(`  \x1b[2m→\x1b[0m ${url}`);
       console.log(`  \x1b[2m↳\x1b[0m ${projectRoot}`);
       console.log('');
