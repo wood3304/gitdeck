@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowDown,
   ArrowUp,
@@ -16,11 +17,45 @@ import { cn, formatDay, relativeTime, repoAccent, useOutsideClick } from '../uti
 import { SearchInput, Spinner } from './common.jsx';
 import FileExplorer from './FileExplorer.jsx';
 
-function RepoMenu({ repo, onClose, onReveal, onRemove }) {
+function RepoMenu({ repo, anchorRef, onClose, onReveal, onRemove }) {
   const menuRef = useRef(null);
+  const [position, setPosition] = useState({ top: 0, left: 0, visibility: 'hidden' });
   useOutsideClick(menuRef, onClose);
-  return (
-    <div className="repo-menu" ref={menuRef} onClick={(event) => event.stopPropagation()}>
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef?.current;
+    if (!anchor) return undefined;
+
+    function place() {
+      const rect = anchor.getBoundingClientRect();
+      const width = 192;
+      const height = menuRef.current?.offsetHeight || 140;
+      const gap = 5;
+      let top = rect.bottom + gap;
+      if (top + height > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - height - gap);
+      }
+      const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+      setPosition({ top, left, visibility: 'visible' });
+    }
+
+    place();
+    const onScroll = () => onClose();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [anchorRef, onClose]);
+
+  return createPortal(
+    <div
+      className="repo-menu repo-menu-portal"
+      ref={menuRef}
+      style={position}
+      onClick={(event) => event.stopPropagation()}
+    >
       <button
         className="menu-item"
         onClick={() => {
@@ -52,7 +87,8 @@ function RepoMenu({ repo, onClose, onReveal, onRemove }) {
         <Trash2 size={14} />
         从工作台移除
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -67,6 +103,7 @@ function RepoCard({
 }) {
   const changes = repo.counts?.total || 0;
   const branch = repo.branchName || repo.branch || 'unknown';
+  const moreRef = useRef(null);
   return (
     <div
       className={cn('repo-card', active && 'is-active', !repo.ok && 'is-missing')}
@@ -129,6 +166,7 @@ function RepoCard({
       </div>
       <button
         className="repo-more"
+        ref={moreRef}
         onClick={(event) => {
           event.stopPropagation();
           setMenuOpen(menuOpen ? null : repo.id);
@@ -140,6 +178,7 @@ function RepoCard({
       {menuOpen ? (
         <RepoMenu
           repo={repo}
+          anchorRef={moreRef}
           onClose={() => setMenuOpen(null)}
           onReveal={onReveal}
           onRemove={onRemove}

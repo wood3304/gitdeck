@@ -4,6 +4,14 @@ All notable changes to GitDeck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] — 2026-10-26
+
+### Fixed
+
+- Repository card “more” menus are now rendered in a document-level portal with fixed positioning.
+- Menus from the last repository in the rail no longer get clipped or covered by the file explorer below.
+- Menus flip above the trigger when there is not enough viewport space and close on scroll/resize.
+
 ## [1.3.0] — 2026-10-26
 
 ### Added
@@ -74,6 +82,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Demo repository generator for local exploration.
 - Backend integration tests and a GitHub Actions CI workflow.
 
+[1.3.1]: https://github.com/wood3304/gitdeck/releases/tag/v1.3.1
 [1.3.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.3.0
 [1.2.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.2.0
 [1.1.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.1.0

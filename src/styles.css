@@ -1131,6 +1131,13 @@ pre {
   right: 7px;
 }
 
+.repo-menu.repo-menu-portal {
+  position: fixed;
+  z-index: 950;
+  top: auto;
+  right: auto;
+}
+
 .menu-item {
   width: 100%;
   height: 30px;

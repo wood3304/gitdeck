@@ -1,6 +1,6 @@
 # GitDeck 使用手册
 
-> 本手册对应 GitDeck 1.3.0。项目主页与安装说明见 [README](../README.md)。
+> 本手册对应 GitDeck 1.3.1。项目主页与安装说明见 [README](../README.md)。
 
 ## 目录
 
