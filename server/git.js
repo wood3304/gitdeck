@@ -95,6 +95,13 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, number));
 }
 
+function redactRemoteUrl(value) {
+  return String(value || '').replace(
+    /\b([a-z][a-z0-9+.-]*:\/\/)([^@\s/]+)@/gi,
+    '$1***@',
+  );
+}
+
 function gitCaptureEnv(options) {
   return {
     ...process.env,
@@ -673,13 +680,46 @@ export async function getLastCommit(repoPath) {
   };
 }
 
+export async function getRemotes(repoPath) {
+  await assertRepoPath(repoPath);
+  const raw = await runGit(repoPath, ['remote', '-v']);
+  const remotes = new Map();
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const match = line.match(/^(\S+)\s+(.+?)\s+\((fetch|push)\)$/);
+    if (!match) continue;
+    const [, name, url, kind] = match;
+    const entry = remotes.get(name) || {
+      name,
+      fetchUrl: '',
+      pushUrl: '',
+      url: '',
+    };
+    if (kind === 'fetch') entry.fetchUrl = redactRemoteUrl(url);
+    else entry.pushUrl = redactRemoteUrl(url);
+    entry.url = entry.pushUrl || entry.fetchUrl;
+    remotes.set(name, entry);
+  }
+  return [...remotes.values()].map((remote) => ({
+    ...remote,
+    url: remote.pushUrl || remote.fetchUrl,
+  }));
+}
+
 export async function getRepoSummary(repoPath) {
   await assertRepoPath(repoPath);
-  const [status, lastCommit, remoteResult] = await Promise.all([
+  const [status, lastCommit, remoteResult, remotes] = await Promise.all([
     getStatus(repoPath, { includeStats: false, limit: 5000 }),
     getLastCommit(repoPath),
     tryGit(repoPath, ['remote', 'get-url', 'origin']),
+    getRemotes(repoPath).catch(() => []),
   ]);
+  const originRemote = remotes.find((remote) => remote.name === 'origin');
+  const remote =
+    originRemote?.url ||
+    (remoteResult.code === 0 ? redactRemoteUrl(remoteResult.textOut.trim()) : '') ||
+    remotes[0]?.url ||
+    '';
   return {
     path: repoPath,
     name: path.basename(repoPath),
@@ -694,7 +734,8 @@ export async function getRepoSummary(repoPath) {
     counts: status.counts,
     hasCommits: status.hasCommits,
     lastCommit,
-    remote: remoteResult.code === 0 ? remoteResult.textOut.trim() : '',
+    remote,
+    remotes,
   };
 }
 
@@ -1499,6 +1540,83 @@ export async function fetchRemotes(repoPath) {
     timeout: 180000,
   });
   return { output: output.trim(), summary: await getRepoSummary(repoPath) };
+}
+
+export async function pushCurrentBranch(repoPath, options = {}) {
+  await assertRepoPath(repoPath);
+  const status = await getStatus(repoPath, { includeStats: false, limit: 1 });
+  if (!status.hasCommits) {
+    throw new AppError('当前分支还没有提交，无法推送', {
+      status: 400,
+      code: 'no_commits',
+    });
+  }
+  if (status.detached || !status.branchName) {
+    throw new AppError('当前处于 detached HEAD 状态，请先切换到一个分支再推送', {
+      status: 400,
+      code: 'detached_head',
+    });
+  }
+
+  const branch = status.branchName;
+  const remotes = await getRemotes(repoPath);
+  if (remotes.length === 0) {
+    throw new AppError('当前仓库没有配置远程仓库，请先执行 git remote add', {
+      status: 400,
+      code: 'no_remote',
+    });
+  }
+
+  let remoteName = String(options.remote || '').trim();
+  if (remoteName && !remotes.some((remote) => remote.name === remoteName)) {
+    throw new AppError('找不到指定的远程仓库', {
+      status: 400,
+      code: 'remote_not_found',
+    });
+  }
+
+  const hasUpstream = Boolean(status.upstream);
+  const configuredRemote = hasUpstream
+    ? (await tryGit(repoPath, ['config', '--get', `branch.${branch}.remote`])).textOut.trim()
+    : '';
+  let args;
+  if (hasUpstream && !options.setUpstream) {
+    args = ['push', '--porcelain'];
+    remoteName = configuredRemote || remoteName || remotes[0].name;
+  } else {
+    remoteName =
+      remoteName ||
+      (remotes.some((remote) => remote.name === 'origin') ? 'origin' : remotes[0].name);
+    args = ['push', '--porcelain', '--set-upstream', remoteName, branch];
+  }
+
+  const result = await runGitRaw(repoPath, args, {
+    timeout: 180000,
+    maxBuffer: 5 * 1024 * 1024,
+  });
+  const output = redactRemoteUrl(
+    [result.textOut, result.textErr]
+      .filter(Boolean)
+      .join('\n')
+      .trim(),
+  );
+  if (result.code !== 0) {
+    throw new GitError('推送失败', {
+      args,
+      stdout: redactRemoteUrl(result.textOut || ''),
+      stderr: output,
+      exitCode: result.code,
+    });
+  }
+  const summary = await getRepoSummary(repoPath);
+  return {
+    output,
+    remote: remoteName,
+    branch,
+    upstream: summary.upstream || `${remoteName}/${branch}`,
+    setUpstream: !hasUpstream || Boolean(options.setUpstream),
+    summary,
+  };
 }
 
 export async function getFileHistory(repoPath, options = {}) {

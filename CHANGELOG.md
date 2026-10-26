@@ -4,6 +4,23 @@ All notable changes to GitDeck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-10-26
+
+### Added
+
+- Push current branch from the repository header.
+- First-push flow that selects a remote and automatically sets the upstream branch (`git push --set-upstream`).
+- Ahead-count indicator on the push button and automatic repository refresh after a successful push.
+- Remote list in repository summaries, with credential-redacted URLs.
+- Dedicated publish modal with remote selection and inline push errors.
+- Push API endpoint (`POST /api/repos/:id/push`).
+- Backend integration test for first-push and subsequent-push flows.
+
+### Changed
+
+- Remote fetch and push output is sanitized to avoid exposing credentials embedded in remote URLs.
+- Documentation updated with push workflows, supported operations, troubleshooting and security notes.
+
 ## [1.0.0] — 2026-10-26
 
 ### Added
@@ -23,4 +40,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Demo repository generator for local exploration.
 - Backend integration tests and a GitHub Actions CI workflow.
 
+[1.1.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.1.0
 [1.0.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.0.0

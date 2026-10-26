@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
   CloudDownload,
+  CloudUpload,
   Copy,
   FileClock,
   FileDiff,
@@ -17,9 +19,11 @@ import {
   Moon,
   RefreshCw,
   Search,
+  Server,
   ShieldCheck,
   Sun,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react';
 import { api } from '../api.js';
 import {
@@ -29,7 +33,13 @@ import {
   shortHash,
   useOutsideClick,
 } from '../utils.js';
-import { CopyButton, Kbd, Spinner } from './common.jsx';
+import {
+  CopyButton,
+  Kbd,
+  Modal,
+  ModalHeader,
+  Spinner,
+} from './common.jsx';
 import BranchMenu from './BranchMenu.jsx';
 
 export function BrandMark({ size = 32 }) {
@@ -142,12 +152,96 @@ export function RepoHeader({
   const [branchOpen, setBranchOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [pushOpen, setPushOpen] = useState(false);
+  const [pushRemote, setPushRemote] = useState('origin');
+  const [pushError, setPushError] = useState('');
   const branchRef = useRef(null);
+  const remotes = repo.remotes || [];
 
   useEffect(() => {
     setBranchOpen(false);
     setMoreOpen(false);
+    setPushOpen(false);
+    setPushError('');
   }, [repo.id]);
+
+  async function performPush(remoteName = '', setUpstream = false) {
+    if (pushing) return;
+    setPushing(true);
+    setPushError('');
+    try {
+      const result = await api.push(repo.id, {
+        remote: remoteName || undefined,
+        setUpstream,
+      });
+      const lines = String(result.output || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const meaningful = lines.filter(
+        (line) =>
+          /(->|new branch|Everything up-to-date|deleted)/i.test(line) &&
+          !/^Done$/i.test(line),
+      );
+      const summary = (meaningful.length ? meaningful : lines.filter((line) => !/^Done$/i.test(line)))
+        .slice(-2)
+        .join(' · ');
+      const target = `${result.remote || remoteName}/${result.branch || repo.branchName}`;
+      notify({
+        type: 'success',
+        title: setUpstream ? '分支已发布' : '推送成功',
+        message: summary || target,
+      });
+      setPushOpen(false);
+      onChanged?.();
+    } catch (error) {
+      setPushError(error.message);
+      notify({
+        type: 'error',
+        title: '推送失败',
+        message: error.message,
+        detail: error.detail,
+      });
+    } finally {
+      setPushing(false);
+    }
+  }
+
+  function handlePush() {
+    if (!repo.ok) return;
+    if (repo.detached) {
+      notify({
+        type: 'warning',
+        title: '无法推送 detached HEAD',
+        message: '请先切换到一个本地分支。',
+      });
+      return;
+    }
+    if (!repo.hasCommits) {
+      notify({ type: 'warning', title: '当前分支还没有提交' });
+      return;
+    }
+    if (!remotes.length) {
+      notify({
+        type: 'error',
+        title: '未配置远程仓库',
+        message: '请先在终端执行 git remote add origin <url>，然后刷新仓库。',
+      });
+      return;
+    }
+    if (repo.upstream) {
+      performPush('', false);
+      return;
+    }
+    const preferred =
+      remotes.find((remote) => remote.name === 'origin')?.name || remotes[0].name;
+    setPushRemote(preferred);
+    setPushError('');
+    setPushOpen(true);
+  }
+
+  const canPush = remotes.length > 0;
 
   async function handleFetch() {
     if (fetching) return;
@@ -178,7 +272,8 @@ export function RepoHeader({
   }
 
   return (
-    <header className="repo-header" style={repoAccent(repo.path)}>
+    <>
+      <header className="repo-header" style={repoAccent(repo.path)}>
       <div className="repo-identity">
         <div className="repo-hero-icon">
           <GitBranch size={19} />
@@ -252,6 +347,32 @@ export function RepoHeader({
           />
         </div>
 
+        <button
+          className={cn(
+            'push-button',
+            repo.upstream ? 'has-upstream' : canPush && 'is-publish',
+            repo.ahead > 0 && 'has-ahead',
+            !canPush && 'is-unavailable',
+          )}
+          onClick={handlePush}
+          disabled={pushing || !repo.ok || repo.detached || !repo.hasCommits || !canPush}
+          title={
+            !canPush
+              ? '未配置远程仓库，请先用 git remote add 添加'
+              : repo.upstream
+                ? `推送 ${repo.branchName} 到 ${repo.upstream}`
+                : '当前分支还没有上游分支，点击发布'
+          }
+        >
+          {pushing ? <Spinner size={14} /> : <CloudUpload size={14} />}
+          <span>{repo.upstream || !canPush ? '推送' : '发布分支'}</span>
+          {repo.upstream && repo.ahead > 0 ? (
+            <span className="push-count">{repo.ahead}</span>
+          ) : repo.upstream ? null : canPush ? (
+            <span className="push-count">NEW</span>
+          ) : null}
+        </button>
+
         <div className="header-divider" />
 
         <button
@@ -294,7 +415,102 @@ export function RepoHeader({
           ) : null}
         </div>
       </div>
-    </header>
+      </header>
+
+      <Modal
+        open={pushOpen}
+        onClose={() => {
+          if (!pushing) setPushOpen(false);
+        }}
+        className="push-modal"
+        ariaLabel="发布当前分支"
+      >
+        <ModalHeader
+          eyebrow="PUSH BRANCH"
+          title="发布当前分支"
+          description={`${repo.branchName} 还没有上游分支。选择远程仓库后，将它推送并设置为跟踪分支。`}
+          onClose={() => {
+            if (!pushing) setPushOpen(false);
+          }}
+          icon={<CloudUpload size={19} />}
+        />
+        <div className="push-modal-body">
+          <div className="push-target">
+            <div className="push-target-side">
+              <span>本地分支</span>
+              <code>{repo.branchName}</code>
+            </div>
+            <ArrowRight size={16} className="push-target-arrow" />
+            <div className="push-target-side target-remote">
+              <span>发布到</span>
+              <code>
+                {pushRemote}/{repo.branchName}
+              </code>
+            </div>
+          </div>
+
+          <p className="push-section-label">远程仓库</p>
+          <div className="remote-options">
+            {remotes.map((remote) => (
+              <button
+                key={remote.name}
+                className={cn(
+                  'remote-option',
+                  pushRemote === remote.name && 'is-active',
+                )}
+                onClick={() => setPushRemote(remote.name)}
+                disabled={pushing}
+              >
+                <span className="remote-radio">
+                  {pushRemote === remote.name ? <Check size={10} /> : null}
+                </span>
+                <span className="remote-option-icon">
+                  <Server size={15} />
+                </span>
+                <span className="remote-option-copy">
+                  <strong>{remote.name}</strong>
+                  <code title={remote.url}>{remote.url}</code>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {pushError ? (
+            <div className="push-error">
+              <TriangleAlert size={15} />
+              <span>{pushError}</span>
+            </div>
+          ) : null}
+
+          <p className="push-note">
+            首次推送会自动执行 <code>git push --set-upstream</code>。之后可以直接点击“推送”。
+          </p>
+        </div>
+        <footer className="push-footer">
+          <span className="push-auth-note">
+            <ShieldCheck size={13} />
+            认证由系统 Git 凭据管理器处理
+          </span>
+          <div className="modal-actions inline">
+            <button
+              className="button ghost small"
+              onClick={() => setPushOpen(false)}
+              disabled={pushing}
+            >
+              取消
+            </button>
+            <button
+              className="button primary small"
+              onClick={() => performPush(pushRemote, true)}
+              disabled={pushing || !pushRemote}
+            >
+              {pushing ? <Spinner size={14} /> : <CloudUpload size={14} />}
+              推送并设置上游
+            </button>
+          </div>
+        </footer>
+      </Modal>
+    </>
   );
 }
 

@@ -106,6 +106,9 @@ GitDeck 把这三件事做成一个连续的工作流：左侧管理多个仓库
 - 新建分支（基于当前 HEAD）。
 - 列出远程分支，并从远程分支创建本地跟踪分支。
 - 获取远程更新：`git fetch --all --prune`。
+- 推送当前分支：已有上游时直接 `git push`；首次推送可选择远程仓库并自动设置上游分支。
+- 推送前显示领先提交数，成功后自动刷新仓库状态。
+- 不执行强制推送；非 fast-forward 时保留 Git 原始错误，交由你决定下一步。
 
 ### 使用体验
 
@@ -125,6 +128,10 @@ GitDeck 把这三件事做成一个连续的工作流：左侧管理多个仓库
 ### 文件历史与版本对比
 
 ![文件历史](docs/screenshots/file-history.png)
+
+### 首次推送分支
+
+![发布当前分支](docs/screenshots/push-branch.png)
 
 ### 打开本地代码库
 
@@ -284,6 +291,16 @@ git fetch --all --prune
 
 GitDeck 不会自动 merge 或 rebase。
 
+### 10. 推送当前分支
+
+仓库标题右侧的「推送」按钮会显示当前分支领先上游的提交数：
+
+- **已有上游分支**：点击后执行 `git push`；
+- **首次推送**：按钮显示为「发布分支」。点击后选择远程仓库，GitDeck 会执行 `git push --set-upstream <remote> <branch>` 并自动建立跟踪关系；
+- 推送成功后自动刷新仓库摘要和分支状态；
+- 推送失败时保留 Git 原始错误。GitDeck 不会自动 force push；
+- 认证由系统 Git / Git Credential Manager 处理。
+
 ## 快捷键
 
 | 快捷键 | 操作 |
@@ -304,7 +321,8 @@ GitDeck 不会自动 merge 或 rebase。
 | 写入 | 提交与 amend | ✅ |
 | 写入 | 切换分支、新建分支、跟踪远程分支 | ✅ |
 | 网络 | `git fetch --all --prune` | ✅ |
-| 网络 | `git push` / `git pull` | ❌ 未实现 |
+| 网络 | `git push`（含首次设置上游） | ✅ |
+| 网络 | `git pull` | ❌ 未实现 |
 | 仓库 | `git clone` 界面 | ❌ 未实现 |
 | 历史编辑 | rebase、cherry-pick、revert、merge、stash | ❌ 未实现 |
 | 暂存粒度 | 按 hunk / 行暂存 | ❌ 未实现 |
@@ -390,6 +408,7 @@ Express 5 (仅监听 127.0.0.1)
 | POST | `/api/repos/:id/discard` | 丢弃修改 |
 | POST | `/api/repos/:id/commit` | 提交或 amend |
 | POST | `/api/repos/:id/fetch` | 获取远程更新 |
+| POST | `/api/repos/:id/push` | 推送当前分支（可选设置上游） |
 | POST | `/api/repos/:id/reveal` | 在文件管理器中打开 |
 | GET | `/api/fs` | 浏览本地目录 |
 | POST | `/api/scan` | 扫描子目录中的仓库 |
@@ -400,7 +419,7 @@ Express 5 (仅监听 127.0.0.1)
 - 服务监听：`127.0.0.1`，默认不对局域网开放。
 - Git 凭据：由系统 Git / Git Credential Manager 管理，GitDeck 不读取、不存储 token。
 - 遥测：无。
-- 网络请求：GitDeck 自身不发起网络请求；只有你主动点击「获取远程更新」时才会执行 `git fetch`。
+- 网络请求：GitDeck 自身不发起网络请求；只有你主动点击「获取远程更新」或「推送」时，才会执行对应的 `git fetch` / `git push`。
 - 删除保护：从工作台移除仓库不会删除磁盘目录；丢弃修改有明确确认弹窗。
 - 安全边界：服务没有登录鉴权，只应在本机受信任环境中运行。不要把端口暴露到公网。
 
@@ -492,6 +511,13 @@ git fetch --all
 
 能在系统 Git 中成功执行后，再回到 GitDeck 点击获取远程更新。
 
+### push 失败
+
+- **没有远程仓库**：先在终端执行 `git remote add origin <url>`，再刷新仓库；
+- **认证失败**：在终端执行一次 `git push`，让系统 Git 凭据管理器完成登录；
+- **non-fast-forward**：远程存在本地没有的提交。GitDeck 不会强制推送，请先 fetch 并自行合并/变基；
+- **detached HEAD**：先切换到一个本地分支再推送。
+
 ### 文件历史为空
 
 - 确认文件已被 Git 跟踪；
@@ -508,7 +534,7 @@ git fetch --all
 
 当前版本聚焦「阅读与比较」，因此有一些刻意保留的边界：
 
-- 没有 `push` / `pull`、克隆仓库向导、远程管理界面；
+- 没有 `pull`、强制推送、标签推送、克隆仓库向导、远程管理界面；
 - 没有按 hunk 暂存、rebase/cherry-pick/revert、stash；
 - 没有内建合并冲突解决器；
 - 没有 Git LFS 专用支持；
@@ -518,7 +544,7 @@ git fetch --all
 
 - [ ] 按 hunk / 行暂存；
 - [ ] 克隆仓库向导；
-- [ ] push / pull 与远程管理；
+- [ ] pull / 强制推送 / 标签推送与远程管理；
 - [ ] 提交图（commit graph）视图；
 - [ ] 冲突解决工作区；
 - [ ] Electron / Tauri 桌面封装；

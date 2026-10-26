@@ -13,8 +13,10 @@ import {
   getFileContent,
   getFileHistory,
   getLog,
+  getRemotes,
   getStatus,
   parseStatusOutput,
+  pushCurrentBranch,
   runGit,
   stagePaths,
   unstagePaths,
@@ -132,4 +134,41 @@ test('git backend covers status, diff, stage, commit, history and branches', asy
   assert.equal(discarded.counts.total, 0);
   const restored = await fs.readFile(path.join(repo, 'notes.md'), 'utf8');
   assert.equal(restored.replace(/\r\n/g, '\n'), 'first line\n');
+});
+
+test('git backend publishes a branch and pushes later commits', async (t) => {
+  const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-push-source-'));
+  const remote = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-push-remote-'));
+  t.after(async () => {
+    await fs.rm(repo, { recursive: true, force: true });
+    await fs.rm(remote, { recursive: true, force: true });
+  });
+
+  await runGit(repo, ['init', '-b', 'main']);
+  await runGit(repo, ['config', 'user.name', 'GitDeck Test']);
+  await runGit(repo, ['config', 'user.email', 'gitdeck@example.com']);
+  await runGit(remote, ['init', '--bare']);
+  await runGit(repo, ['remote', 'add', 'origin', remote]);
+
+  await fs.writeFile(path.join(repo, 'README.md'), '# Push fixture\n');
+  await runGit(repo, ['add', '-A']);
+  await runGit(repo, ['commit', '-m', 'chore: initial push fixture']);
+
+  const remotes = await getRemotes(repo);
+  assert.equal(remotes.length, 1);
+  assert.equal(remotes[0].name, 'origin');
+  assert.ok(remotes[0].url.includes('gitdeck-push-remote-'));
+
+  const firstPush = await pushCurrentBranch(repo, { setUpstream: true });
+  assert.equal(firstPush.remote, 'origin');
+  assert.equal(firstPush.setUpstream, true);
+  assert.equal(firstPush.summary.upstream, 'origin/main');
+  assert.match(await runGit(remote, ['log', 'main', '--oneline']), /initial push fixture/);
+
+  await fs.writeFile(path.join(repo, 'README.md'), '# Push fixture\n\nSecond commit.\n');
+  await runGit(repo, ['commit', '-am', 'feat: second pushed commit']);
+  const secondPush = await pushCurrentBranch(repo, {});
+  assert.equal(secondPush.setUpstream, false);
+  assert.equal(secondPush.summary.ahead, 0);
+  assert.match(await runGit(remote, ['log', 'main', '--oneline']), /second pushed commit/);
 });

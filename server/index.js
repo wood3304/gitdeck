@@ -17,6 +17,7 @@ import {
   getRepoSummary,
   getStatus,
   listRepoFiles,
+  pushCurrentBranch,
   resolveRepo,
   revealPath,
   stagePaths,
@@ -105,7 +106,7 @@ export async function createApp() {
       response.json({
         ok: true,
         name: 'GitDeck',
-        version: '1.0.0',
+        version: '1.1.0',
         gitVersion: await getGitVersion(),
         node: process.version,
         platform: process.platform,
@@ -342,6 +343,19 @@ export async function createApp() {
     asyncRoute(async (request, response) => {
       const repo = await repoFromRequest(request);
       response.json({ ok: true, ...(await fetchRemotes(repo.path)) });
+    }),
+  );
+
+  app.post(
+    '/api/repos/:id/push',
+    asyncRoute(async (request, response) => {
+      const repo = await repoFromRequest(request);
+      const remote = request.body?.remote ? String(request.body.remote) : '';
+      const setUpstream = Boolean(request.body?.setUpstream);
+      response.json({
+        ok: true,
+        ...(await pushCurrentBranch(repo.path, { remote, setUpstream })),
+      });
     }),
   );
 
