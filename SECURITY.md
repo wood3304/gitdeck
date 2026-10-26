@@ -21,7 +21,7 @@ You should receive an acknowledgement within a few days.
 
 ## Security model
 
-GitDeck is a local-only tool:
+GitDeck's HTTP service is designed for local use:
 
 - the HTTP server binds to `127.0.0.1`;
 - there is no authentication layer;
@@ -30,4 +30,4 @@ GitDeck is a local-only tool:
 - GitDeck does not read or store Git credentials; Git credential handling remains with the system Git installation;
 - no telemetry or cloud sync is performed.
 
-Repository paths are stored locally in `.data/state.json`.
+Repository paths are stored in `.data/state.json`.
