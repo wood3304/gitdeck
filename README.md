@@ -1,7 +1,6 @@
 # GitDeck
 
 > **本地优先的多仓库 Git 工作台。**
-> 参考 IDEA Git 工具窗口的阅读体验，围绕「看历史、看提交、看差异」重新设计。
 
 [![CI](https://github.com/wood3304/gitdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/wood3304/gitdeck/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-5b76f7.svg)](LICENSE)
