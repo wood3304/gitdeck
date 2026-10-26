@@ -19,6 +19,7 @@ import {
   getRepoTree,
   getStatus,
   listRepoFiles,
+  pullCurrentBranch,
   pushCurrentBranch,
   readWorkingFile,
   resolveRepo,
@@ -110,7 +111,7 @@ export async function createApp() {
       response.json({
         ok: true,
         name: 'GitDeck',
-        version: '1.2.0',
+        version: '1.3.0',
         gitVersion: await getGitVersion(),
         node: process.version,
         platform: process.platform,
@@ -417,6 +418,14 @@ export async function createApp() {
     asyncRoute(async (request, response) => {
       const repo = await repoFromRequest(request);
       response.json({ ok: true, ...(await fetchRemotes(repo.path)) });
+    }),
+  );
+
+  app.post(
+    '/api/repos/:id/pull',
+    asyncRoute(async (request, response) => {
+      const repo = await repoFromRequest(request);
+      response.json({ ok: true, ...(await pullCurrentBranch(repo.path)) });
     }),
   );
 

@@ -19,6 +19,7 @@ import {
   getRepoTree,
   getStatus,
   parseStatusOutput,
+  pullCurrentBranch,
   pushCurrentBranch,
   readWorkingFile,
   runGit,
@@ -204,6 +205,39 @@ test('git backend publishes a branch and pushes later commits', async (t) => {
   assert.equal(secondPush.setUpstream, false);
   assert.equal(secondPush.summary.ahead, 0);
   assert.match(await runGit(remote, ['log', 'main', '--oneline']), /second pushed commit/);
+});
+
+test('git backend pulls new upstream commits with fast-forward only', async (t) => {
+  const source = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-pull-source-'));
+  const remote = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-pull-remote-'));
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'gitdeck-pull-clone-'));
+  const clone = path.join(parent, 'working-copy');
+  t.after(async () => {
+    await fs.rm(source, { recursive: true, force: true });
+    await fs.rm(remote, { recursive: true, force: true });
+    await fs.rm(parent, { recursive: true, force: true });
+  });
+
+  await runGit(source, ['init', '-b', 'main']);
+  await runGit(source, ['config', 'user.name', 'GitDeck Test']);
+  await runGit(source, ['config', 'user.email', 'gitdeck@example.com']);
+  await runGit(remote, ['init', '--bare']);
+  await runGit(source, ['remote', 'add', 'origin', remote]);
+  await fs.writeFile(path.join(source, 'README.md'), '# Pull fixture\n');
+  await runGit(source, ['add', '-A']);
+  await runGit(source, ['commit', '-m', 'chore: pull fixture']);
+  await pushCurrentBranch(source, { setUpstream: true });
+
+  await runGit(parent, ['clone', '-b', 'main', remote, clone]);
+  await fs.writeFile(path.join(source, 'README.md'), '# Pull fixture\n\nNew upstream line.\n');
+  await runGit(source, ['commit', '-am', 'feat: upstream commit']);
+  await pushCurrentBranch(source, {});
+
+  const pulled = await pullCurrentBranch(clone);
+  assert.equal(pulled.branch, 'main');
+  assert.equal(pulled.upstream, 'origin/main');
+  assert.equal(pulled.summary.behind, 0);
+  assert.match(await runGit(clone, ['log', '-1', '--format=%s']), /upstream commit/);
 });
 
 test('git backend clones a remote repository into a chosen folder', async (t) => {

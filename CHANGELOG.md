@@ -4,6 +4,21 @@ All notable changes to GitDeck are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-10-26
+
+### Added
+
+- Pull current branch from the repository header, with behind-count indicator and success/error feedback.
+- Fast-forward-only pull (`git pull --ff-only`, with `pull.rebase=false`) to avoid accidental merge commits or rebase.
+- Pull API endpoint (`POST /api/repos/:id/pull`).
+- Backend integration test for pulling new upstream commits into a clone.
+
+### Changed
+
+- Pull requires an upstream branch; the button explains how to publish and set one when missing.
+- Diverged histories are rejected with Git's original error instead of creating an implicit merge or rebase.
+- Documentation updated with pull behavior, limitations and troubleshooting.
+
 ## [1.2.0] — 2026-10-26
 
 ### Added
@@ -59,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Demo repository generator for local exploration.
 - Backend integration tests and a GitHub Actions CI workflow.
 
+[1.3.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.3.0
 [1.2.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.2.0
 [1.1.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.1.0
 [1.0.0]: https://github.com/wood3304/gitdeck/releases/tag/v1.0.0

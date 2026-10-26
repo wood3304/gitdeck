@@ -94,6 +94,7 @@ export const api = {
   discard: (id, paths) => request(`${repoBase(id)}/discard`, { method: 'POST', body: { paths } }),
   commit: (id, body) => request(`${repoBase(id)}/commit`, { method: 'POST', body }),
   fetch: (id) => request(`${repoBase(id)}/fetch`, { method: 'POST', body: {} }),
+  pull: (id) => request(`${repoBase(id)}/pull`, { method: 'POST', body: {} }),
   push: (id, body) => request(`${repoBase(id)}/push`, { method: 'POST', body }),
   reveal: (id, path) => request(`${repoBase(id)}/reveal`, { method: 'POST', body: { path } }),
 

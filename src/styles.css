@@ -1550,6 +1550,50 @@ pre {
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
+.pull-button {
+  height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--muted);
+  font-size: 10.2px;
+  font-weight: 570;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pull-button:hover:not(:disabled) {
+  border-color: var(--green);
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.pull-button.has-behind {
+  border-color: rgba(67, 217, 163, 0.22);
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.pull-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--green);
+  color: var(--bg-deep);
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .push-button:hover:not(:disabled) {
   background: var(--accent-bg-strong);
   border-color: var(--accent);
@@ -6521,17 +6565,20 @@ pre {
     max-width: 300px;
   }
 
-  .push-button {
+  .push-button,
+  .pull-button {
     width: 31px;
     padding: 0;
     justify-content: center;
   }
 
-  .push-button > span:not(.push-count) {
+  .push-button > span:not(.push-count),
+  .pull-button > span:not(.pull-count) {
     display: none;
   }
 
-  .push-count {
+  .push-count,
+  .pull-count {
     position: absolute;
     top: -5px;
     right: -5px;
@@ -6542,7 +6589,8 @@ pre {
     font-size: 6.5px;
   }
 
-  .push-button {
+  .push-button,
+  .pull-button {
     position: relative;
   }
 

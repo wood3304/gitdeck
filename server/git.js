@@ -1619,6 +1619,56 @@ export async function pushCurrentBranch(repoPath, options = {}) {
   };
 }
 
+export async function pullCurrentBranch(repoPath) {
+  await assertRepoPath(repoPath);
+  const status = await getStatus(repoPath, { includeStats: false, limit: 1 });
+  if (status.detached || !status.branchName) {
+    throw new AppError('当前处于 detached HEAD 状态，请先切换到一个分支再拉取', {
+      status: 400,
+      code: 'detached_head',
+    });
+  }
+  if (!status.hasCommits) {
+    throw new AppError('当前分支还没有提交，无法拉取', {
+      status: 400,
+      code: 'no_commits',
+    });
+  }
+  if (!status.upstream) {
+    throw new AppError('当前分支没有上游分支，请先推送并设置上游', {
+      status: 400,
+      code: 'no_upstream',
+    });
+  }
+
+  const args = ['-c', 'pull.rebase=false', 'pull', '--ff-only'];
+  const result = await runGitRaw(repoPath, args, {
+    timeout: 180000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const output = redactRemoteUrl(
+    [result.textOut, result.textErr]
+      .filter(Boolean)
+      .join('\n')
+      .trim(),
+  );
+  if (result.code !== 0) {
+    throw new GitError('拉取失败', {
+      args,
+      stdout: redactRemoteUrl(result.textOut || ''),
+      stderr: output,
+      exitCode: result.code,
+    });
+  }
+  const summary = await getRepoSummary(repoPath);
+  return {
+    output,
+    branch: status.branchName,
+    upstream: summary.upstream || status.upstream,
+    summary,
+  };
+}
+
 export async function getFileHistory(repoPath, options = {}) {
   await assertRepoPath(repoPath);
   const relPath = normalizeRepoRelPath(options.path);

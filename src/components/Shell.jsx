@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
+  ArrowDownToLine,
   ArrowRight,
   ArrowUp,
   Check,
@@ -148,6 +149,7 @@ export function RepoHeader({
   const [branchOpen, setBranchOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [pulling, setPulling] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
   const [pushRemote, setPushRemote] = useState('origin');
@@ -238,6 +240,43 @@ export function RepoHeader({
   }
 
   const canPush = remotes.length > 0;
+
+  async function handlePull() {
+    if (pulling) return;
+    if (!repo.upstream) {
+      notify({
+        type: 'warning',
+        title: '当前分支没有上游分支',
+        message: '请先使用「发布分支」推送并设置上游，然后刷新仓库。',
+      });
+      return;
+    }
+    setPulling(true);
+    try {
+      const result = await api.pull(repo.id);
+      const lines = String(result.output || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const upToDate = lines.some((line) => /Already up.to.date/i.test(line));
+      const summary = lines.filter((line) => !/Already up.to.date/i.test(line)).slice(-2).join(' · ');
+      notify({
+        type: 'success',
+        title: upToDate ? '已经是最新' : '拉取成功',
+        message: summary || `${result.upstream || repo.upstream} · ${result.branch || repo.branchName}`,
+      });
+      onChanged?.();
+    } catch (error) {
+      notify({
+        type: 'error',
+        title: '拉取失败',
+        message: error.message,
+        detail: error.detail,
+      });
+    } finally {
+      setPulling(false);
+    }
+  }
 
   async function handleFetch() {
     if (fetching) return;
@@ -345,13 +384,47 @@ export function RepoHeader({
 
         <button
           className={cn(
+            'pull-button',
+            repo.behind > 0 && 'has-behind',
+          )}
+          onClick={handlePull}
+          disabled={
+            pulling ||
+            pushing ||
+            fetching ||
+            !repo.ok ||
+            repo.detached ||
+            !repo.hasCommits ||
+            !repo.upstream
+          }
+          title={
+            repo.upstream
+              ? `从 ${repo.upstream} 拉取（仅快进）`
+              : '当前分支没有上游分支，暂时无法拉取'
+          }
+        >
+          {pulling ? <Spinner size={14} /> : <ArrowDownToLine size={14} />}
+          <span>拉取</span>
+          {repo.behind > 0 ? <span className="pull-count">{repo.behind}</span> : null}
+        </button>
+
+        <button
+          className={cn(
             'push-button',
             repo.upstream ? 'has-upstream' : canPush && 'is-publish',
             repo.ahead > 0 && 'has-ahead',
             !canPush && 'is-unavailable',
           )}
           onClick={handlePush}
-          disabled={pushing || !repo.ok || repo.detached || !repo.hasCommits || !canPush}
+          disabled={
+            pushing ||
+            pulling ||
+            fetching ||
+            !repo.ok ||
+            repo.detached ||
+            !repo.hasCommits ||
+            !canPush
+          }
           title={
             !canPush
               ? '未配置远程仓库，请先用 git remote add 添加'
@@ -383,7 +456,7 @@ export function RepoHeader({
         <button
           className="icon-button action-icon"
           onClick={handleFetch}
-          disabled={fetching || !repo.ok}
+          disabled={fetching || pulling || pushing || !repo.ok}
           title="获取远程更新（git fetch --all --prune）"
           aria-label="获取远程更新"
         >

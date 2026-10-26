@@ -9,7 +9,7 @@
 
 GitDeck 是一个 Git 桌面客户端。它不接管你的 Git 工作流，而是通过系统 Git CLI 读取仓库状态，把多仓库、文件树、代码编辑、文件历史、提交记录和代码差异放进同一个界面。
 
-GitDeck 通过系统 Git CLI 操作仓库；只有你主动执行 fetch、push 或 clone 时才会访问远程。
+GitDeck 通过系统 Git CLI 操作仓库；只有你主动执行 fetch、pull、push 或 clone 时才会访问远程。
 
 ![GitDeck 工作区更改视图](docs/screenshots/changes.png)
 
@@ -127,6 +127,7 @@ GitDeck 把这三件事做成一个连续的工作流：左侧管理多个仓库
 - 新建分支（基于当前 HEAD）。
 - 列出远程分支，并从远程分支创建本地跟踪分支。
 - 获取远程更新：`git fetch --all --prune`。
+- 拉取当前分支：显示落后提交数，执行 `git pull --ff-only`；分叉历史会明确报错，不会隐式 merge 或 rebase。
 - 推送当前分支：已有上游时直接 `git push`；首次推送可选择远程仓库并自动设置上游分支。
 - 推送前显示领先提交数，成功后自动刷新仓库状态。
 - 不执行强制推送；非 fast-forward 时保留 Git 原始错误，交由你决定下一步。
@@ -352,7 +353,17 @@ git fetch --all --prune
 
 GitDeck 不会自动 merge 或 rebase。
 
-### 11. 推送当前分支
+### 11. 拉取当前分支
+
+仓库标题右侧的「拉取」按钮会显示当前分支落后上游的提交数：
+
+- 点击执行 `git pull --ff-only`，只允许 fast-forward；
+- 拉取成功后自动刷新工作区、仓库摘要和分支状态；
+- 工作区有冲突修改、历史分叉或认证失败时，保留 Git 原始错误；
+- GitDeck 不会自动 merge 或 rebase，也不会产生隐式合并提交；
+- 当前分支没有上游时按钮不可用，请先「发布分支」设置上游。
+
+### 12. 推送当前分支
 
 仓库标题右侧的「推送」按钮会显示当前分支领先上游的提交数：
 
@@ -385,9 +396,9 @@ GitDeck 不会自动 merge 或 rebase。
 | 写入 | 提交与 amend | ✅ |
 | 写入 | 切换分支、新建分支、跟踪远程分支 | ✅ |
 | 网络 | `git fetch --all --prune` | ✅ |
+| 网络 | `git pull --ff-only`（仅快进） | ✅ |
 | 网络 | `git push`（含首次设置上游） | ✅ |
 | 仓库 | `git clone`（HTTPS / SSH / Git 协议） | ✅ |
-| 网络 | `git pull` | ❌ 未实现 |
 | 历史编辑 | rebase、cherry-pick、revert、merge、stash | ❌ 未实现 |
 | 暂存粒度 | 按 hunk / 行暂存 | ❌ 未实现 |
 | 冲突 | 内建三方合并编辑器 | ❌ 未实现 |
@@ -478,6 +489,7 @@ Express 5 (仅监听 127.0.0.1)
 | POST | `/api/repos/:id/discard` | 丢弃修改 |
 | POST | `/api/repos/:id/commit` | 提交或 amend |
 | POST | `/api/repos/:id/fetch` | 获取远程更新 |
+| POST | `/api/repos/:id/pull` | 快进拉取当前分支 |
 | POST | `/api/repos/:id/push` | 推送当前分支（可选设置上游） |
 | POST | `/api/repos/:id/reveal` | 在文件管理器中打开 |
 | GET | `/api/fs` | 浏览本地目录 |
@@ -489,7 +501,7 @@ Express 5 (仅监听 127.0.0.1)
 - 服务监听：`127.0.0.1`，默认不对局域网开放。
 - Git 凭据：由系统 Git / Git Credential Manager 管理，GitDeck 不读取、不存储 token。
 - 遥测：无。
-- 网络请求：GitDeck 自身不发起网络请求；只有你主动点击「获取远程更新」「推送」或「克隆远程代码库」时，才会执行对应的 `git fetch` / `git push` / `git clone`。
+- 网络请求：GitDeck 自身不发起网络请求；只有你主动点击「获取远程更新」「拉取」「推送」或「克隆远程代码库」时，才会执行对应的 `git fetch` / `git pull` / `git push` / `git clone`。
 - 文件编辑保护：只允许编辑代码库内的普通文本文件；拒绝 `.git` 路径、目录穿越和指向仓库外的符号链接，最大 2 MB。
 - 删除保护：从工作台移除仓库不会删除磁盘目录；丢弃修改有明确确认弹窗。
 - 安全边界：服务没有登录鉴权，只应在本机受信任环境中运行。不要把端口暴露到公网。
@@ -582,6 +594,13 @@ git fetch --all
 
 能在系统 Git 中成功执行后，再回到 GitDeck 点击获取远程更新。
 
+### pull 失败
+
+- **没有上游分支**：「拉取」按钮不可用；先推送当前分支并设置上游；
+- **认证失败**：先在终端执行一次 `git pull`，让系统 Git 凭据管理器完成登录；
+- **工作区有冲突修改**：先提交、暂存或丢弃修改；
+- **分叉历史**：GitDeck 只做 fast-forward，不会自动 merge/rebase，请到终端处理。
+
 ### push 失败
 
 - **没有远程仓库**：先在终端执行 `git remote add origin <url>`，再刷新仓库；
@@ -605,7 +624,8 @@ git fetch --all
 
 当前版本聚焦 Git 工作流，因此有一些刻意保留的边界：
 
-- 没有 `pull`、强制推送、标签推送、远程管理界面；
+- `pull` 仅支持 fast-forward；分叉历史需要在终端合并或变基；
+- 没有强制推送、标签推送、远程管理界面；
 - 没有按 hunk 暂存、rebase/cherry-pick/revert、stash；
 - 没有内建合并冲突解决器；
 - 文件编辑是轻量文本编辑器：没有语法高亮、新建/重命名/删除文件，文件上限 2 MB；
@@ -616,9 +636,10 @@ git fetch --all
 后续可以考虑：
 
 - [ ] 按 hunk / 行暂存；
+- [ ] pull 的 merge / rebase 策略；
 - [ ] 文件新建 / 重命名 / 删除与语法高亮；
 - [ ] 克隆进度、取消与浅克隆；
-- [ ] pull / 强制推送 / 标签推送与远程管理；
+- [ ] 强制推送 / 标签推送与远程管理；
 - [ ] 提交图（commit graph）视图；
 - [ ] 冲突解决工作区；
 - [ ] Electron / Tauri 桌面封装；
